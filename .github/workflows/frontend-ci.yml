@@ -30,8 +30,8 @@ jobs:
       - name: Instalar dependencias
         run: npm ci
 
-      - name: Executar testes
-        run: npm test -- --no-watch --no-progress
+      - name: Executar testes com cobertura
+        run: npm test -- --no-watch --no-progress --coverage --coverage-reporters=lcovonly
 
       - name: Executar build
         run: npm run build

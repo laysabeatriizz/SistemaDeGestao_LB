@@ -35,7 +35,7 @@ jobs:
       - name: Checkout do código
         uses: actions/checkout@v5
         with:
-          fetch-depth: 0 # O Sonar precisa do histórico completo do Git para analisar o código
+          fetch-depth: 0
 
       - name: Configurar Java 21
         uses: actions/setup-java@v5
@@ -45,10 +45,16 @@ jobs:
           cache: maven
           cache-dependency-path: backend/pom.xml
 
+      - name: Configurar Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24.15.0'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
       - name: Dar permissão ao Maven Wrapper
         run: chmod +x backend/mvnw
 
-      # Garante que o runner vai segurar a onda até o MySQL responder de verdade
       - name: Aguardar o MySQL ficar pronto
         run: |
           echo "Aguardando o MySQL subir na porta 3306..."
@@ -58,24 +64,38 @@ jobs:
           done
           echo "MySQL pronto para conexões!"
 
-        # Executa build, testes e gera o relatório JaCoCo em push e pull request
-      - name: Executar build, testes e cobertura
+      - name: Executar build, testes e cobertura do backend
         working-directory: backend
         run: |
           ./mvnw clean verify \
             -Dspring.profiles.active=test
 
-      # Executa o Sonar somente quando o código estiver integrado na main
+      - name: Instalar dependências do frontend
+        working-directory: frontend
+        run: npm ci
+
+      - name: Executar testes e cobertura do frontend
+        working-directory: frontend
+        run: npm test -- --no-watch --no-progress --coverage --coverage-reporters=lcovonly
+
+      - name: Executar build do frontend
+        working-directory: frontend
+        run: npm run build
+
       - name: Executar análise do Sonar
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        working-directory: backend
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
+          cd backend
           ./mvnw org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
             -Dspring.profiles.active=test \
             -Dsonar.host.url=https://sonarcloud.io \
             -Dsonar.organization=sistema-concessionaria-de-veiculos \
-            -Dsonar.projectKey=SistemaConcessionaria-de-Veiculos_SistemaDeGestao \
-            -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
+            -Dsonar.projectKey=SistemaDeGestao \
+            -Dsonar.sources=src/main/java,../frontend/src \
+            -Dsonar.tests=src/test \
+            -Dsonar.test.inclusions=../frontend/src/**/*.spec.ts \
+            -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml \
+            -Dsonar.javascript.lcov.reportPaths=../frontend/coverage/frontend/lcov.info
